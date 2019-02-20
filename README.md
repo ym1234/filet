@@ -1,6 +1,6 @@
 # filet
 
-A fucking fucking fast file fucker (afffff)
+A fucking fucking fast file fucker (a so called fufufafifu)
 
 ## Usage
 
@@ -9,3 +9,20 @@ A fucking fucking fast file fucker (afffff)
 Optionally give it a directory to open like this `filet <dir>`.
 
 ## Why?
+
+```
+             -     =    .--._
+       - - ~_=  =~_- = - `.  `-.
+     ==~_ = =_  ~ -   =  .-'    `.
+   --=~_ - ~  == - =   .'      _..:._
+  ---=~ _~  = =-  =   `.  .--.'      `.
+ --=_-=- ~= _ - =  -  _.'  `.      .--.:
+   -=_~ -- = =  ~-  .'      :     :    :
+    -=-_ ~=  = - _-`--.     :  .--:    D
+      -=~ _=  =  -~_=  `;  .'.:   ,`---'@
+    --=_= = ~-   -=   .'  .'  `._ `-.__.'
+   --== ~_ - =  =-  .'  .'     _.`---'
+  --=~_= = - = ~  .'--''   .   `-..__.--.
+ jgs--==~ _= - ~-=  =-~_-   `-..___(  ===;
+ --==~_==- =__ ~-=  - -    .'       `---'
+```
