@@ -37,6 +37,9 @@ struct direlement {
 static struct termios g_old_termios;
 static int g_lines;
 
+/**
+ * Got too used to rust. This falls back to fallback, if name isn't set
+ */
 static const char *
 getenv_or(const char *name, const char *fallback)
 {
@@ -47,8 +50,11 @@ getenv_or(const char *name, const char *fallback)
     return res;
 }
 
+/**
+ * Comparison function for direlements
+ */
 static int
-direntcmp(const void *va, const void *vb)
+direlemcmp(const void *va, const void *vb)
 {
     const struct direlement *a = va;
     const struct direlement *b = vb;
@@ -56,6 +62,9 @@ direntcmp(const void *va, const void *vb)
     return strcmp(a->d_name, b->d_name);
 }
 
+/**
+ * Sets the terminal size on g_lines
+ */
 static bool
 get_term_size(void)
 {
@@ -70,6 +79,9 @@ get_term_size(void)
     return true;
 }
 
+/**
+ * Used as SIGWINCH (terminal resize handler)
+ */
 static void
 handle_winch(int sig)
 {
@@ -78,6 +90,9 @@ handle_winch(int sig)
     signal(sig, handle_winch);
 }
 
+/**
+ * Resets the terminal to it's prior state
+ */
 static void
 restore_terminal(void)
 {
@@ -94,6 +109,10 @@ restore_terminal(void)
     );
 }
 
+/**
+ * Sets up the terminal for TUI use (read every char, differentiate \r and \n,
+ * don't echo, hide the cursor, fix a scroll region, switch to a second screen)
+ */
 static bool
 setup_terminal(void)
 {
@@ -124,6 +143,74 @@ setup_terminal(void)
         g_lines);
 
     return true;
+}
+
+/**
+ * Read a directory into ents.
+ *
+ * Returns the number of elements in the dir.
+ */
+static size_t
+read_dir(
+    const char *path,
+    struct direlement *ents,
+    size_t ents_size,
+    bool show_hidden)
+{
+    size_t n = 0;
+    DIR *dir = opendir(path);
+    if (dir) {
+        struct dirent *ent;
+        while ((ent = readdir(dir))) {
+            const char *name = ent->d_name;
+            int fd           = dirfd(dir);
+            struct stat sb;
+
+            if (name[0] == '.' &&
+                (name[1] == '\0' || (name[1] == '.' && name[2] == '\0'))) {
+                continue;
+            }
+
+            if (!show_hidden && name[0] == '.') {
+                continue;
+            }
+
+            if (fstatat(fd, name, &sb, AT_SYMLINK_NOFOLLOW) < 0) {
+                continue;
+            }
+
+            if (n == ents_size) {
+                ents_size += ENT_ALLOC_NUM;
+                struct direlement *tmp =
+                    realloc(ents, ents_size * sizeof(*tmp));
+                if (!tmp) {
+                    perror("realloc");
+                    exit(EXIT_FAILURE);
+                }
+                ents = tmp;
+            }
+
+            ents[n].d_name = ent->d_name;
+
+            if (S_ISDIR(sb.st_mode)) {
+                ents[n].type = TYPE_DIR;
+            } else if (S_ISLNK(sb.st_mode)) {
+                ents[n].type = TYPE_SYML;
+            } else {
+                if (sb.st_mode & S_IXUSR) {
+                    ents[n].type = TYPE_EXEC;
+                } else {
+                    ents[n].type = TYPE_NORM;
+                }
+            }
+
+            ++n;
+        }
+        closedir(dir);
+        qsort(ents, n, sizeof(*ents), direlemcmp);
+    }
+
+    return n;
 }
 
 int
@@ -185,68 +272,15 @@ main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    bool is_about_to_quit = false;
     bool show_hidden      = false;
     bool fetch_dir        = true;
     size_t sel            = 0;
     size_t n;
 
-    while (!is_about_to_quit) {
+    for (;;) {
         if (fetch_dir) {
-            n         = 0;
             fetch_dir = false;
-            DIR *dir  = opendir(path);
-            if (dir) {
-                struct dirent *ent;
-                while ((ent = readdir(dir))) {
-                    const char *name = ent->d_name;
-                    int fd           = dirfd(dir);
-                    struct stat sb;
-
-                    if (name[0] == '.' &&
-                        (name[1] == '\0' ||
-                         (name[1] == '.' && name[2] == '\0'))) {
-                        continue;
-                    }
-
-                    if (!show_hidden && name[0] == '.') {
-                        continue;
-                    }
-
-                    if (fstatat(fd, name, &sb, AT_SYMLINK_NOFOLLOW) < 0) {
-                        continue;
-                    }
-
-                    if (n == ents_size) {
-                        ents_size += ENT_ALLOC_NUM;
-                        struct direlement *tmp =
-                            realloc(ents, ents_size * sizeof(*tmp));
-                        if (!tmp) {
-                            perror("realloc");
-                            exit(EXIT_FAILURE);
-                        }
-                        ents = tmp;
-                    }
-
-                    ents[n].d_name = ent->d_name;
-
-                    if (S_ISDIR(sb.st_mode)) {
-                        ents[n].type = TYPE_DIR;
-                    } else if (S_ISLNK(sb.st_mode)) {
-                        ents[n].type = TYPE_SYML;
-                    } else {
-                        if (sb.st_mode & S_IXUSR) {
-                            ents[n].type = TYPE_EXEC;
-                        } else {
-                            ents[n].type = TYPE_NORM;
-                        }
-                    }
-
-                    ++n;
-                }
-                closedir(dir);
-                qsort(ents, n, sizeof(*ents), direntcmp);
-            }
+            n         = read_dir(path, ents, ents_size, show_hidden);
         }
 
         printf("\033[2J\033[H");
@@ -335,7 +369,7 @@ main(int argc, char **argv)
             sel = n - 1;
             break;
         case 'q':
-            is_about_to_quit = true;
+            exit(EXIT_SUCCESS);
             break;
         }
     }
