@@ -213,6 +213,54 @@ read_dir(
     return n;
 }
 
+/**
+ * Redraw the whole UI. Rarely needed
+ */
+static void
+redraw(
+    struct direlement *ents,
+    size_t n,
+    size_t sel,
+    const char *path,
+    const char *user,
+    const char *hostname)
+{
+    printf("\033[2J\033[H"); // clear the screen
+    printf("\033[32;1m%s", user);
+    if (hostname) {
+        printf("@%s", hostname);
+    }
+
+    printf("\033[0m:\033[34;1m%s\r\n\n", path);
+
+    if (n == 0) {
+        printf("\033[31;7mdirectory empty\033[27m");
+    }
+
+    for (size_t i = 0; i < n; ++i) {
+        switch (ents[i].type) {
+        case TYPE_DIR:
+            printf("\033[34;1m");
+            break;
+        case TYPE_SYML:
+            printf("\033[36;1m");
+            break;
+        case TYPE_EXEC:
+            printf("\033[32;1m");
+            break;
+        case TYPE_NORM:
+            printf("\033[0m");
+            break;
+        }
+
+        if (i == sel) {
+            printf(">  %s\r\n", ents[i].d_name);
+        } else {
+            printf("  %s\r\n", ents[i].d_name);
+        }
+    }
+}
+
 int
 main(int argc, char **argv)
 {
@@ -272,9 +320,9 @@ main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    bool show_hidden      = false;
-    bool fetch_dir        = true;
-    size_t sel            = 0;
+    bool show_hidden = false;
+    bool fetch_dir   = true;
+    size_t sel       = 0;
     size_t n;
 
     for (;;) {
@@ -283,40 +331,7 @@ main(int argc, char **argv)
             n         = read_dir(path, ents, ents_size, show_hidden);
         }
 
-        printf("\033[2J\033[H");
-        printf("\033[32;1m%s", user);
-        if (hostname) {
-            printf("@%s", hostname);
-        }
-
-        printf("\033[0m:\033[34;1m%s\r\n\n", path);
-
-        if (n == 0) {
-            printf("\033[31;7mdirectory empty\033[27m");
-        }
-
-        for (size_t i = 0; i < n; ++i) {
-            switch (ents[i].type) {
-            case TYPE_DIR:
-                printf("\033[34;1m");
-                break;
-            case TYPE_SYML:
-                printf("\033[36;1m");
-                break;
-            case TYPE_EXEC:
-                printf("\033[32;1m");
-                break;
-            case TYPE_NORM:
-                printf("\033[0m");
-                break;
-            }
-
-            if (i == sel) {
-                printf(">  %s\r\n", ents[i].d_name);
-            } else {
-                printf("  %s\r\n", ents[i].d_name);
-            }
-        }
+        redraw(ents, n, sel, path, user, hostname);
 
         fflush(stdout);
 
