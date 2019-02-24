@@ -13,6 +13,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <libgen.h>
 #include <limits.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
