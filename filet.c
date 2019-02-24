@@ -15,12 +15,12 @@
 #include <fcntl.h>
 #include <libgen.h>
 #include <limits.h>
+#include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
 
-#define MAX_ITEMS "99"
 #define ENT_ALLOC_NUM 64
 
 struct direlement {
@@ -34,7 +34,8 @@ struct direlement {
     const char *d_name;
 };
 
-static struct termios old_termios;
+static struct termios g_old_termios;
+static int g_lines;
 
 static const char *
 getenv_or(const char *name, const char *fallback)
@@ -55,10 +56,32 @@ direntcmp(const void *va, const void *vb)
     return strcmp(a->d_name, b->d_name);
 }
 
+static bool
+get_term_size(void)
+{
+    struct winsize wsize;
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize) < 0) {
+        perror("ioctl");
+        return false;
+    }
+
+    g_lines = wsize.ws_row;
+
+    return true;
+}
+
+static void
+handle_winch(int sig)
+{
+    signal(sig, SIG_IGN);
+    get_term_size();
+    signal(sig, handle_winch);
+}
+
 static void
 restore_terminal(void)
 {
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &old_termios) < 0) {
+    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &g_old_termios) < 0) {
         perror("tcsetattr");
     }
 
@@ -76,14 +99,14 @@ setup_terminal(void)
 {
     setvbuf(stdout, NULL, _IOFBF, 0);
 
-    if (tcgetattr(STDIN_FILENO, &old_termios) < 0) {
+    if (tcgetattr(STDIN_FILENO, &g_old_termios) < 0) {
         perror("tcgetattr");
         return false;
     }
 
     atexit(restore_terminal);
 
-    struct termios raw = old_termios;
+    struct termios raw = g_old_termios;
     raw.c_oflag &= ~OPOST;
     raw.c_lflag &= ~(ECHO | ICANON);
 
@@ -93,12 +116,12 @@ setup_terminal(void)
     }
 
     printf(
-        "\033[?1049h"           // use alternative screen buffer
-        "\033[?7l"              // diable line wrapping
-        "\033[?25l"             // hide cursor
-        "\033[2J"               // clear screen
-        "\033[1;" MAX_ITEMS "r" // limit scrolling to scrolling area
-    );
+        "\033[?1049h" // use alternative screen buffer
+        "\033[?7l"    // diable line wrapping
+        "\033[?25l"   // hide cursor
+        "\033[2J"     // clear screen
+        "\033[1;%dr", // limit scrolling to scrolling area
+        g_lines);
 
     return true;
 }
@@ -120,12 +143,15 @@ main(int argc, char **argv)
     if (argc > 1) {
         path = strcpy(path, argv[1]);
     } else {
-        path = strcpy(path, "/");
+        if (!getcwd(path, PATH_MAX)) {
+            perror("getcwd");
+            exit(EXIT_FAILURE);
+        }
     }
 
     //const char *editor = getenv_or("EDITOR", "vi");
-    //const char *home   = getenv_or("HOME", "/");
     //const char *shell = getenv_or("SHELL", "/bin/sh");
+    const char *home = getenv_or("HOME", "/");
     const char *user = getlogin();
 
     char *hostname = malloc(HOST_NAME_MAX);
@@ -143,6 +169,15 @@ main(int argc, char **argv)
     struct direlement *ents = malloc(ents_size * sizeof(*ents));
     if (!ents) {
         perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    if (!get_term_size()) {
+        exit(EXIT_FAILURE);
+    }
+
+    if (signal(SIGWINCH, handle_winch) == SIG_ERR) {
+        perror("signal");
         exit(EXIT_FAILURE);
     }
 
@@ -178,6 +213,10 @@ main(int argc, char **argv)
                         continue;
                     }
 
+                    if (fstatat(fd, name, &sb, AT_SYMLINK_NOFOLLOW) < 0) {
+                        continue;
+                    }
+
                     if (n == ents_size) {
                         ents_size += ENT_ALLOC_NUM;
                         struct direlement *tmp =
@@ -187,10 +226,6 @@ main(int argc, char **argv)
                             exit(EXIT_FAILURE);
                         }
                         ents = tmp;
-                    }
-
-                    if (fstatat(fd, name, &sb, AT_SYMLINK_NOFOLLOW) < 0) {
-                        continue;
                     }
 
                     ents[n].d_name = ent->d_name;
@@ -273,6 +308,16 @@ main(int argc, char **argv)
                 sel       = 0;
                 fetch_dir = true;
             }
+            break;
+        case '~':
+            strcpy(path, home);
+            sel       = 0;
+            fetch_dir = true;
+            break;
+        case '/':
+            strcpy(path, "/");
+            sel       = 0;
+            fetch_dir = true;
             break;
         case '.':
             show_hidden = !show_hidden;
