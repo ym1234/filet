@@ -103,7 +103,6 @@ restore_terminal(void)
     printf(
         "\033[?7h"    // enable line wrapping
         "\033[?25h"   // unhide cursor
-        "\033[2J"     // clear terminal
         "\033[;r"     // reset scroll region
         "\033[?1049l" // restore main screen
     );
@@ -261,6 +260,37 @@ redraw(
     }
 }
 
+/**
+ * Spawns a new process, waits for it and returns
+ */
+static void
+spawn(const char *path, const char *cmd, const char *argv1)
+{
+    int status;
+    pid_t pid = fork();
+
+    if (pid < 0) {
+        return;
+    }
+
+    restore_terminal();
+
+    if (pid == 0) {
+        if (chdir(path) < 0) {
+            _exit(EXIT_FAILURE);
+        }
+        execlp(cmd, cmd, argv1, NULL);
+        // NOTREACHED
+        _exit(EXIT_FAILURE);
+    } else {
+        do {
+            waitpid(pid, &status, WUNTRACED);
+        } while (!WIFEXITED(status) && !WIFSIGNALED(status));
+    }
+
+    setup_terminal();
+}
+
 int
 main(int argc, char **argv)
 {
@@ -284,10 +314,10 @@ main(int argc, char **argv)
         }
     }
 
-    //const char *editor = getenv_or("EDITOR", "vi");
-    //const char *shell = getenv_or("SHELL", "/bin/sh");
-    const char *home = getenv_or("HOME", "/");
-    const char *user = getlogin();
+    const char *editor = getenv_or("EDITOR", "vi");
+    const char *shell  = getenv_or("SHELL", "/bin/sh");
+    const char *home   = getenv_or("HOME", "/");
+    const char *user   = getlogin();
 
     char *hostname = malloc(HOST_NAME_MAX);
     if (!hostname) {
@@ -382,6 +412,16 @@ main(int argc, char **argv)
             break;
         case 'G':
             sel = n - 1;
+            break;
+        case 'e':
+            spawn(path, editor, ents[sel].d_name);
+            sel       = 0;
+            fetch_dir = true;
+            break;
+        case 's':
+            spawn(path, shell, NULL);
+            sel       = 0;
+            fetch_dir = true;
             break;
         case 'q':
             exit(EXIT_SUCCESS);
