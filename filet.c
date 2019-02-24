@@ -274,6 +274,7 @@ spawn(const char *path, const char *cmd, const char *argv1)
     }
 
     restore_terminal();
+    fflush(stdout);
 
     if (pid == 0) {
         if (chdir(path) < 0) {
