@@ -122,8 +122,6 @@ setup_terminal(void)
         return false;
     }
 
-    atexit(restore_terminal);
-
     struct termios raw = g_old_termios;
     raw.c_oflag &= ~OPOST;
     raw.c_lflag &= ~(ECHO | ICANON);
@@ -355,6 +353,8 @@ main(int argc, char **argv)
     if (!setup_terminal()) {
         exit(EXIT_FAILURE);
     }
+
+    atexit(restore_terminal);
 
     bool show_hidden = false;
     bool fetch_dir   = true;
