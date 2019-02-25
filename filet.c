@@ -425,6 +425,15 @@ main(int argc, char **argv)
             spawn(path, shell, NULL);
             fetch_dir = true;
             break;
+        case 'x': {
+            int fd = dirfd(last_dir);
+            unlinkat(
+                fd,
+                ents[sel].d_name,
+                ents[sel].type == TYPE_DIR ? AT_REMOVEDIR : 0);
+            fetch_dir = true;
+            break;
+        }
         case 'q':
             exit(EXIT_SUCCESS);
             break;
