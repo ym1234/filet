@@ -152,12 +152,18 @@ setup_terminal(void)
 static size_t
 read_dir(
     const char *path,
-    struct direlement *ents,
-    size_t ents_size,
+    struct direlement **ents,
+    size_t *ents_size,
+    DIR **last_dir,
     bool show_hidden)
 {
     size_t n = 0;
-    DIR *dir = opendir(path);
+    DIR *dir;
+    if (*last_dir) {
+        closedir(*last_dir);
+    }
+    dir       = opendir(path);
+    *last_dir = dir;
     if (dir) {
         struct dirent *ent;
         while ((ent = readdir(dir))) {
@@ -178,35 +184,34 @@ read_dir(
                 continue;
             }
 
-            if (n == ents_size) {
-                ents_size += ENT_ALLOC_NUM;
+            if (n == *ents_size) {
+                *ents_size += ENT_ALLOC_NUM;
                 struct direlement *tmp =
-                    realloc(ents, ents_size * sizeof(*tmp));
+                    realloc(*ents, *ents_size * sizeof(*tmp));
                 if (!tmp) {
                     perror("realloc");
                     exit(EXIT_FAILURE);
                 }
-                ents = tmp;
+                *ents = tmp;
             }
 
-            ents[n].d_name = ent->d_name;
+            (*ents)[n].d_name = ent->d_name;
 
             if (S_ISDIR(sb.st_mode)) {
-                ents[n].type = TYPE_DIR;
+                (*ents)[n].type = TYPE_DIR;
             } else if (S_ISLNK(sb.st_mode)) {
-                ents[n].type = TYPE_SYML;
+                (*ents)[n].type = TYPE_SYML;
             } else {
                 if (sb.st_mode & S_IXUSR) {
-                    ents[n].type = TYPE_EXEC;
+                    (*ents)[n].type = TYPE_EXEC;
                 } else {
-                    ents[n].type = TYPE_NORM;
+                    (*ents)[n].type = TYPE_NORM;
                 }
             }
 
             ++n;
         }
-        closedir(dir);
-        qsort(ents, n, sizeof(*ents), direlemcmp);
+        qsort(*ents, n, sizeof(**ents), direlemcmp);
     }
 
     return n;
@@ -354,13 +359,14 @@ main(int argc, char **argv)
     bool show_hidden = false;
     bool fetch_dir   = true;
     size_t sel       = 0;
+    DIR *last_dir    = NULL;
     size_t n;
 
     for (;;) {
         if (fetch_dir) {
             fetch_dir = false;
             sel       = 0;
-            n         = read_dir(path, ents, ents_size, show_hidden);
+            n = read_dir(path, &ents, &ents_size, &last_dir, show_hidden);
         }
 
         redraw(ents, n, sel, path, user, hostname);
