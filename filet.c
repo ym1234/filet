@@ -359,6 +359,7 @@ main(int argc, char **argv)
     for (;;) {
         if (fetch_dir) {
             fetch_dir = false;
+            sel       = 0;
             n         = read_dir(path, ents, ents_size, show_hidden);
         }
 
@@ -392,36 +393,30 @@ main(int argc, char **argv)
             break;
         case '~':
             strcpy(path, home);
-            sel       = 0;
             fetch_dir = true;
             break;
         case '/':
             strcpy(path, "/");
-            sel       = 0;
             fetch_dir = true;
             break;
         case '.':
             show_hidden = !show_hidden;
-            sel         = 0;
             fetch_dir   = true;
             break;
         case 'r':
             fetch_dir = true;
             break;
         case 'g':
-            sel = 0;
             break;
         case 'G':
             sel = n - 1;
             break;
         case 'e':
             spawn(path, editor, ents[sel].d_name);
-            sel       = 0;
             fetch_dir = true;
             break;
         case 's':
             spawn(path, shell, NULL);
-            sel       = 0;
             fetch_dir = true;
             break;
         case 'q':
