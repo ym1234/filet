@@ -391,7 +391,10 @@ main(int argc, char **argv)
             break;
         case 'l':
             if (n > 0 && ents[sel].type == TYPE_DIR) {
-                strcat(path, "/");
+                // don't append to /
+                if (path[1] != '\0') {
+                    strcat(path, "/");
+                }
                 strcat(path, ents[sel].d_name);
                 sel       = 0;
                 fetch_dir = true;
