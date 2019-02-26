@@ -36,6 +36,7 @@ struct direlement {
 
 static struct termios g_old_termios;
 static int g_row;
+static int g_col;
 
 /**
  * Got too used to rust. This falls back to fallback, if name isn't set
@@ -75,6 +76,7 @@ get_term_size(void)
     }
 
     g_row = wsize.ws_row;
+    g_col = wsize.ws_col;
 
     return true;
 }
@@ -216,54 +218,6 @@ read_dir(
 }
 
 /**
- * Redraw the whole UI. Rarely needed
- */
-static void
-redraw(
-    struct direlement *ents,
-    size_t n,
-    size_t sel,
-    const char *path,
-    const char *user,
-    const char *hostname)
-{
-    printf("\033[2J\033[H"); // clear the screen
-    printf("\033[32;1m%s", user);
-    if (hostname) {
-        printf("@%s", hostname);
-    }
-
-    printf("\033[0m:\033[34;1m%s\r\n\n", path);
-
-    if (n == 0) {
-        printf("\033[31;7mdirectory empty\033[27m");
-    }
-
-    for (size_t i = 0; i < n; ++i) {
-        switch (ents[i].type) {
-        case TYPE_DIR:
-            printf("\033[34;1m");
-            break;
-        case TYPE_SYML:
-            printf("\033[36;1m");
-            break;
-        case TYPE_EXEC:
-            printf("\033[32;1m");
-            break;
-        case TYPE_NORM:
-            printf("\033[0m");
-            break;
-        }
-
-        if (i == sel) {
-            printf(">  %s\r\n", ents[i].d_name);
-        } else {
-            printf("  %s\r\n", ents[i].d_name);
-        }
-    }
-}
-
-/**
  * Spawns a new process, waits for it and returns
  */
 static void
@@ -293,6 +247,33 @@ spawn(const char *path, const char *cmd, const char *argv1)
     }
 
     setup_terminal();
+}
+
+static void
+draw_line(struct direlement *ent, bool is_sel)
+{
+    switch (ent->type) {
+    case TYPE_DIR:
+        printf("\033[34;1m");
+        break;
+    case TYPE_SYML:
+        printf("\033[36;1m");
+        break;
+    case TYPE_EXEC:
+        printf("\033[32;1m");
+        break;
+    case TYPE_NORM:
+        printf("\033[0m");
+        break;
+    }
+
+    if (is_sel) {
+        printf(">  %s", ent->d_name);
+    } else {
+        printf(
+            "  %s ",
+            ent->d_name); // space to clear the last char on unindenting it
+    }
 }
 
 int
@@ -356,6 +337,19 @@ main(int argc, char **argv)
 
     atexit(restore_terminal);
 
+    char *user_and_hostname = malloc(
+        strlen(user) + strlen(hostname) + strlen("\033[32;1m@\033[0m:") + 1);
+    if (!user_and_hostname) {
+        perror("malloc");
+        exit(EXIT_FAILURE);
+    }
+
+    strcpy(user_and_hostname, "\033[32;1m");
+    strcat(user_and_hostname, user);
+    strcat(user_and_hostname, "@");
+    strcat(user_and_hostname, hostname);
+    strcat(user_and_hostname, "\033[0m:");
+
     bool show_hidden = false;
     bool fetch_dir   = true;
     size_t sel       = 0;
@@ -367,21 +361,49 @@ main(int argc, char **argv)
             fetch_dir = false;
             sel       = 0;
             n = read_dir(path, &ents, &ents_size, &last_dir, show_hidden);
-        }
 
-        redraw(ents, n, sel, path, user, hostname);
+            // clear screen and redraw status
+            printf(
+                "\033[2J"      // clear screen
+                "\033[H"       // go to 0,0
+                "%s"           // print username@hostname
+                "\033[34;1m%s" // print path
+                "\r\n\n",      // enter scrolling region
+                user_and_hostname,
+                path);
+
+            if (n == 0) {
+                printf("\033[31;7mdirectory empty\033[27m");
+            } else {
+                for (size_t i = 0; i < n; ++i) {
+                    draw_line(&ents[i], i == sel);
+                    printf("\r\n");
+                }
+            }
+
+            // move cursor to selection
+            printf("\033[3;1H");
+        }
 
         fflush(stdout);
 
         switch (getchar()) {
         case 'j':
             if (sel < n - 1) {
+                draw_line(&ents[sel], false);
+                printf("\r\n");
                 ++sel;
+                draw_line(&ents[sel], true);
+                printf("\r");
             }
             break;
         case 'k':
             if (sel > 0) {
+                draw_line(&ents[sel], false);
+                printf("\r\033[A");
                 --sel;
+                draw_line(&ents[sel], true);
+                printf("\r");
             }
             break;
         case 'h':
@@ -416,10 +438,18 @@ main(int argc, char **argv)
             fetch_dir = true;
             break;
         case 'g':
+            draw_line(&ents[sel], false);
+            printf("\033[3;1H");
             sel = 0;
+            draw_line(&ents[sel], true);
+            printf("\r");
             break;
         case 'G':
+            draw_line(&ents[sel], false);
+            printf("\033[%lu;1H", 2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
             sel = n - 1;
+            draw_line(&ents[sel], true);
+            printf("\r");
             break;
         case 'e':
             spawn(path, editor, ents[sel].d_name);
