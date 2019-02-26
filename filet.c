@@ -386,16 +386,43 @@ main(int argc, char **argv)
         }
 
         fflush(stdout);
-        char c = getchar();
+
+        int c = getchar();
+
+        switch (c) {
+        case 'h':
+            dirname(path);
+            sel       = 0;
+            fetch_dir = true;
+            break;
+        case '~':
+            strcpy(path, home);
+            fetch_dir = true;
+            break;
+        case '/':
+            strcpy(path, "/");
+            fetch_dir = true;
+            break;
+        case '.':
+            show_hidden = !show_hidden;
+            fetch_dir   = true;
+            break;
+        case 'r':
+            fetch_dir = true;
+            break;
+        case 's':
+            spawn(path, shell, NULL);
+            fetch_dir = true;
+            break;
+        case 'q':
+            exit(EXIT_SUCCESS);
+            break;
+        }
+
         if (n <= 0) {
-            if (c == 'h') {
-                dirname(path);
-                sel       = 0;
-                fetch_dir = true;
-                break;
-            }
             continue;
         }
+
         switch (c) {
         case 'j':
             if (sel < n - 1) {
@@ -415,46 +442,24 @@ main(int argc, char **argv)
                 printf("\r");
             }
             break;
-        case 'h':
-            dirname(path);
-            sel       = 0;
-            fetch_dir = true;
-            break;
-        case 'l':
-            if (ents[sel].type == TYPE_DIR || ents[sel].type == TYPE_SYML) {
+        case 'l': {
+            bool change_dir = ents[sel].type == TYPE_DIR;
+            if (ents[sel].type == TYPE_SYML) {
+                struct stat sb;
+                change_dir |=
+                    fstatat(dirfd(last_dir), ents[sel].d_name, &sb, 0) < 0 ||
+                    !S_ISDIR(sb.st_mode);
+            }
+            if (change_dir) {
                 // don't append to /
                 if (path[1] != '\0') {
                     strcat(path, "/");
                 }
                 strcat(path, ents[sel].d_name);
-
-                struct stat sb;
-                if (ents[sel].type == TYPE_SYML) {
-                    if (stat(path, &sb) < 0 || !S_ISDIR(sb.st_mode)) {
-                        dirname(path);
-                        continue;
-                    }
-                }
-
-                sel       = 0;
                 fetch_dir = true;
             }
             break;
-        case '~':
-            strcpy(path, home);
-            fetch_dir = true;
-            break;
-        case '/':
-            strcpy(path, "/");
-            fetch_dir = true;
-            break;
-        case '.':
-            show_hidden = !show_hidden;
-            fetch_dir   = true;
-            break;
-        case 'r':
-            fetch_dir = true;
-            break;
+        }
         case 'g':
             draw_line(&ents[sel], false);
             printf("\033[3;1H");
@@ -475,10 +480,6 @@ main(int argc, char **argv)
             spawn(path, editor, ents[sel].d_name);
             fetch_dir = true;
             break;
-        case 's':
-            spawn(path, shell, NULL);
-            fetch_dir = true;
-            break;
         case 'x': {
             int fd = dirfd(last_dir);
             unlinkat(
@@ -488,9 +489,6 @@ main(int argc, char **argv)
             fetch_dir = true;
             break;
         }
-        case 'q':
-            exit(EXIT_SUCCESS);
-            break;
         }
     }
 }
