@@ -386,8 +386,17 @@ main(int argc, char **argv)
         }
 
         fflush(stdout);
-
-        switch (getchar()) {
+        char c = getchar();
+        if (n <= 0) {
+            if (c == 'h') {
+                dirname(path);
+                sel       = 0;
+                fetch_dir = true;
+                break;
+            }
+            continue;
+        }
+        switch (c) {
         case 'j':
             if (sel < n - 1) {
                 draw_line(&ents[sel], false);
@@ -412,12 +421,21 @@ main(int argc, char **argv)
             fetch_dir = true;
             break;
         case 'l':
-            if (n > 0 && ents[sel].type == TYPE_DIR) {
+            if (ents[sel].type == TYPE_DIR || ents[sel].type == TYPE_SYML) {
                 // don't append to /
                 if (path[1] != '\0') {
                     strcat(path, "/");
                 }
                 strcat(path, ents[sel].d_name);
+
+                struct stat sb;
+                if (ents[sel].type == TYPE_SYML) {
+                    if (stat(path, &sb) < 0 || !S_ISDIR(sb.st_mode)) {
+                        dirname(path);
+                        continue;
+                    }
+                }
+
                 sel       = 0;
                 fetch_dir = true;
             }
@@ -446,7 +464,9 @@ main(int argc, char **argv)
             break;
         case 'G':
             draw_line(&ents[sel], false);
-            printf("\033[%lu;1H", 2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
+            printf(
+                "\033[%lu;1H",
+                2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
             sel = n - 1;
             draw_line(&ents[sel], true);
             printf("\r");
