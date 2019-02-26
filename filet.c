@@ -35,7 +35,7 @@ struct direlement {
 };
 
 static struct termios g_old_termios;
-static int g_lines;
+static int g_row;
 
 /**
  * Got too used to rust. This falls back to fallback, if name isn't set
@@ -63,7 +63,7 @@ direlemcmp(const void *va, const void *vb)
 }
 
 /**
- * Sets the terminal size on g_lines
+ * Sets the terminal size on g_row
  */
 static bool
 get_term_size(void)
@@ -74,7 +74,7 @@ get_term_size(void)
         return false;
     }
 
-    g_lines = wsize.ws_row;
+    g_row = wsize.ws_row;
 
     return true;
 }
@@ -136,8 +136,8 @@ setup_terminal(void)
         "\033[?7l"    // diable line wrapping
         "\033[?25l"   // hide cursor
         "\033[2J"     // clear screen
-        "\033[1;%dr", // limit scrolling to scrolling area
-        g_lines);
+        "\033[3;%dr", // limit scrolling to scrolling area
+        g_row);
 
     return true;
 }
