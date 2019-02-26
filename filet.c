@@ -419,7 +419,7 @@ main(int argc, char **argv)
             break;
         }
 
-        if (n <= 0) {
+        if (n == 0) {
             continue;
         }
 
@@ -447,8 +447,8 @@ main(int argc, char **argv)
             if (ents[sel].type == TYPE_SYML) {
                 struct stat sb;
                 change_dir |=
-                    fstatat(dirfd(last_dir), ents[sel].d_name, &sb, 0) < 0 ||
-                    !S_ISDIR(sb.st_mode);
+                    !(fstatat(dirfd(last_dir), ents[sel].d_name, &sb, 0) < 0 ||
+                      !S_ISDIR(sb.st_mode));
             }
             if (change_dir) {
                 // don't append to /
