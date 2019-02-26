@@ -413,6 +413,7 @@ main(int argc, char **argv)
             fetch_dir = true;
             break;
         case 'g':
+            sel = 0;
             break;
         case 'G':
             sel = n - 1;
