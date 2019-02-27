@@ -268,7 +268,7 @@ spawn(const char *path, const char *cmd, const char *argv1)
  * Assumes the cursor is at the beginning of the line
  */
 static void
-draw_line(struct direlement *ent, bool is_sel)
+draw_line(const struct direlement *ent, bool is_sel)
 {
     switch (ent->type) {
     case TYPE_DIR:
@@ -293,6 +293,44 @@ draw_line(struct direlement *ent, bool is_sel)
             "  %s ",
             ent->d_name); // space to clear the last char on unindenting it
     }
+}
+
+/**
+ * Redraws the whole screen. Avoid this if possible
+ */
+static void
+redraw(
+    const struct direlement *ents,
+    const char *user_and_hostname,
+    const char *path,
+    size_t n,
+    size_t sel,
+    size_t offset)
+{
+    // clear screen and redraw status
+    printf(
+        "\033[2J"       // clear screen
+        "\033[H"        // go to 0,0
+        "%s"            // print username@hostname
+        "\033[34;1m%s"  // print path
+        " \033[0m[%zu]" // number of entries
+        "\r\n",         // enter scrolling region
+        user_and_hostname,
+        path,
+        n);
+
+    if (n == 0) {
+        printf("\033[31;7mdirectory empty\033[27m");
+    } else {
+        for (size_t i = offset; i < n && i - offset < (size_t)g_row - 2; ++i) {
+            printf("\n");
+            draw_line(&ents[i], i == sel);
+            printf("\r");
+        }
+    }
+
+    // move cursor to selection
+    printf("\033[3;1H");
 }
 
 int
@@ -372,6 +410,7 @@ main(int argc, char **argv)
     bool show_hidden = false;
     bool fetch_dir   = true;
     size_t sel       = 0;
+    size_t y         = 0;
     DIR *last_dir    = NULL;
     size_t n;
 
@@ -379,29 +418,10 @@ main(int argc, char **argv)
         if (fetch_dir) {
             fetch_dir = false;
             sel       = 0;
+            y         = 0;
             n = read_dir(path, &ents, &ents_size, &last_dir, show_hidden);
 
-            // clear screen and redraw status
-            printf(
-                "\033[2J"      // clear screen
-                "\033[H"       // go to 0,0
-                "%s"           // print username@hostname
-                "\033[34;1m%s" // print path
-                "\r\n\n",      // enter scrolling region
-                user_and_hostname,
-                path);
-
-            if (n == 0) {
-                printf("\033[31;7mdirectory empty\033[27m");
-            } else {
-                for (size_t i = 0; i < n; ++i) {
-                    draw_line(&ents[i], i == sel);
-                    printf("\r\n");
-                }
-            }
-
-            // move cursor to selection
-            printf("\033[3;1H");
+            redraw(ents, user_and_hostname, path, n, sel, 0);
         }
 
         fflush(stdout);
@@ -449,12 +469,21 @@ main(int argc, char **argv)
                 ++sel;
                 draw_line(&ents[sel], true);
                 printf("\r");
+
+                if (y < (size_t)g_row - 3) {
+                    ++y;
+                }
             }
             break;
         case 'k':
             if (sel > 0) {
                 draw_line(&ents[sel], false);
-                printf("\r\033[A");
+                if (y == 0) {
+                    printf("\r\033[L");
+                } else {
+                    printf("\r\033[A");
+                    --y;
+                }
                 --sel;
                 draw_line(&ents[sel], true);
                 printf("\r");
@@ -472,20 +501,36 @@ main(int argc, char **argv)
             }
             break;
         case 'g':
-            draw_line(&ents[sel], false);
-            printf("\033[3;1H");
-            sel = 0;
-            draw_line(&ents[sel], true);
-            printf("\r");
+            if (sel - y == 0) {
+                draw_line(&ents[sel], false);
+                printf("\033[3;1H");
+                sel = 0;
+                draw_line(&ents[sel], true);
+                printf("\r");
+            } else {
+                // screen needs to be redrawn
+                sel = 0;
+                y   = 0;
+                redraw(ents, user_and_hostname, path, n, sel, 0);
+            }
             break;
         case 'G':
-            draw_line(&ents[sel], false);
-            printf(
-                "\033[%lu;1H",
-                2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
-            sel = n - 1;
-            draw_line(&ents[sel], true);
-            printf("\r");
+            if (sel + g_row - 2 - y >= n) {
+                draw_line(&ents[sel], false);
+                printf(
+                    "\033[%lu;1H",
+                    2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
+                sel = n - 1;
+                y   = g_row - 3;
+                draw_line(&ents[sel], true);
+                printf("\r");
+            } else {
+                // screen needs to be redrawn
+                sel = n - 1;
+                y   = g_row - 3;
+                redraw(ents, user_and_hostname, path, n, sel, n - (g_row - 2));
+                printf("\033[%d;1H", g_row);
+            }
             break;
         case 'e':
             spawn(path, editor, ents[sel].d_name);
