@@ -255,6 +255,11 @@ spawn(const char *path, const char *cmd, const char *argv1)
     setup_terminal();
 }
 
+/**
+ * Draws a single directory entry in it's own line
+ *
+ * Assumes the cursor is at the beginning of the line
+ */
 static void
 draw_line(struct direlement *ent, bool is_sel)
 {
