@@ -27,6 +27,7 @@ struct direlement {
     enum {
         TYPE_DIR,
         TYPE_SYML,
+        TYPE_SYML_TO_DIR,
         TYPE_EXEC,
         TYPE_NORM,
     } type;
@@ -200,7 +201,12 @@ read_dir(
             if (S_ISDIR(sb.st_mode)) {
                 (*ents)[n].type = TYPE_DIR;
             } else if (S_ISLNK(sb.st_mode)) {
-                (*ents)[n].type = TYPE_SYML;
+                if (!(fstatat(dirfd(dir), (*ents)[n].d_name, &sb, 0) < 0 ||
+                      !S_ISDIR(sb.st_mode))) {
+                    (*ents)[n].type = TYPE_SYML_TO_DIR;
+                } else {
+                    (*ents)[n].type = TYPE_SYML;
+                }
             } else {
                 if (sb.st_mode & S_IXUSR) {
                     (*ents)[n].type = TYPE_EXEC;
@@ -256,7 +262,8 @@ draw_line(struct direlement *ent, bool is_sel)
     case TYPE_DIR:
         printf("\033[34;1m");
         break;
-    case TYPE_SYML:
+    case TYPE_SYML: // FALLTHROUGH
+    case TYPE_SYML_TO_DIR:
         printf("\033[36;1m");
         break;
     case TYPE_EXEC:
@@ -442,15 +449,9 @@ main(int argc, char **argv)
                 printf("\r");
             }
             break;
-        case 'l': {
-            bool change_dir = ents[sel].type == TYPE_DIR;
-            if (ents[sel].type == TYPE_SYML) {
-                struct stat sb;
-                change_dir |=
-                    !(fstatat(dirfd(last_dir), ents[sel].d_name, &sb, 0) < 0 ||
-                      !S_ISDIR(sb.st_mode));
-            }
-            if (change_dir) {
+        case 'l':
+            if (ents[sel].type == TYPE_DIR ||
+                ents[sel].type == TYPE_SYML_TO_DIR) {
                 // don't append to /
                 if (path[1] != '\0') {
                     strcat(path, "/");
@@ -459,7 +460,6 @@ main(int argc, char **argv)
                 fetch_dir = true;
             }
             break;
-        }
         case 'g':
             draw_line(&ents[sel], false);
             printf("\033[3;1H");
