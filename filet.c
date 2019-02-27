@@ -432,7 +432,7 @@ main(int argc, char **argv)
         }
 
         if (n == 0) {
-            continue;
+            continue; // rest of the commands requires at least one entry
         }
 
         switch (c) {
