@@ -8,6 +8,15 @@ A fucking fucking fast file fucker (a so called fufufafifu)
 
 Optionally give it a directory to open like this `filet <dir>`.
 
+Also you can use the following snippet to automatically switch to the directory you quit in.
+
+```bash
+f() {
+    filet "$@"
+    cd "$(< /tmp/filet_dir)"
+}
+```
+
 ## Why?
 
 ```
