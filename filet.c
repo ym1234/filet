@@ -455,9 +455,12 @@ main(int argc, char **argv)
             spawn(path, shell, NULL);
             fetch_dir = true;
             break;
-        case 'q':
+        case 'q': {
+            FILE *f = fopen("/tmp/filet_dir", "w");
+            fprintf(f, "%s\n", path);
             exit(EXIT_SUCCESS);
             break;
+        }
         }
 
         if (n == 0) {
