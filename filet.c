@@ -348,7 +348,10 @@ main(int argc, char **argv)
     }
 
     if (argc > 1) {
-        path = strcpy(path, argv[1]);
+        if (!realpath(argv[1], path)) {
+            perror("realpath");
+            exit(EXIT_FAILURE);
+        }
     } else {
         if (!getcwd(path, PATH_MAX)) {
             perror("getcwd");
