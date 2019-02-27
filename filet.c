@@ -404,7 +404,6 @@ main(int argc, char **argv)
         switch (c) {
         case 'h':
             dirname(path);
-            sel       = 0;
             fetch_dir = true;
             break;
         case '~':
