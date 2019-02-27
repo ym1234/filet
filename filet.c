@@ -61,6 +61,13 @@ direlemcmp(const void *va, const void *vb)
     const struct direlement *a = va;
     const struct direlement *b = vb;
 
+    bool a_is_dir = a->type == TYPE_DIR || a->type == TYPE_SYML_TO_DIR;
+    bool b_is_dir = b->type == TYPE_DIR || b->type == TYPE_SYML_TO_DIR;
+
+    if (a_is_dir != b_is_dir) {
+        return a_is_dir ? -1 : 1;
+    }
+
     return strcmp(a->d_name, b->d_name);
 }
 
