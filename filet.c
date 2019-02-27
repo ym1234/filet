@@ -387,7 +387,43 @@ main(int argc, char **argv)
 
         fflush(stdout);
 
-        switch (getchar()) {
+        int c = getchar();
+
+        switch (c) {
+        case 'h':
+            dirname(path);
+            sel       = 0;
+            fetch_dir = true;
+            break;
+        case '~':
+            strcpy(path, home);
+            fetch_dir = true;
+            break;
+        case '/':
+            strcpy(path, "/");
+            fetch_dir = true;
+            break;
+        case '.':
+            show_hidden = !show_hidden;
+            fetch_dir   = true;
+            break;
+        case 'r':
+            fetch_dir = true;
+            break;
+        case 's':
+            spawn(path, shell, NULL);
+            fetch_dir = true;
+            break;
+        case 'q':
+            exit(EXIT_SUCCESS);
+            break;
+        }
+
+        if (n == 0) {
+            continue;
+        }
+
+        switch (c) {
         case 'j':
             if (sel < n - 1) {
                 draw_line(&ents[sel], false);
@@ -406,37 +442,24 @@ main(int argc, char **argv)
                 printf("\r");
             }
             break;
-        case 'h':
-            dirname(path);
-            sel       = 0;
-            fetch_dir = true;
-            break;
-        case 'l':
-            if (n > 0 && ents[sel].type == TYPE_DIR) {
+        case 'l': {
+            bool change_dir = ents[sel].type == TYPE_DIR;
+            if (ents[sel].type == TYPE_SYML) {
+                struct stat sb;
+                change_dir |=
+                    !(fstatat(dirfd(last_dir), ents[sel].d_name, &sb, 0) < 0 ||
+                      !S_ISDIR(sb.st_mode));
+            }
+            if (change_dir) {
                 // don't append to /
                 if (path[1] != '\0') {
                     strcat(path, "/");
                 }
                 strcat(path, ents[sel].d_name);
-                sel       = 0;
                 fetch_dir = true;
             }
             break;
-        case '~':
-            strcpy(path, home);
-            fetch_dir = true;
-            break;
-        case '/':
-            strcpy(path, "/");
-            fetch_dir = true;
-            break;
-        case '.':
-            show_hidden = !show_hidden;
-            fetch_dir   = true;
-            break;
-        case 'r':
-            fetch_dir = true;
-            break;
+        }
         case 'g':
             draw_line(&ents[sel], false);
             printf("\033[3;1H");
@@ -446,17 +469,15 @@ main(int argc, char **argv)
             break;
         case 'G':
             draw_line(&ents[sel], false);
-            printf("\033[%lu;1H", 2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
+            printf(
+                "\033[%lu;1H",
+                2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
             sel = n - 1;
             draw_line(&ents[sel], true);
             printf("\r");
             break;
         case 'e':
             spawn(path, editor, ents[sel].d_name);
-            fetch_dir = true;
-            break;
-        case 's':
-            spawn(path, shell, NULL);
             fetch_dir = true;
             break;
         case 'x': {
@@ -468,9 +489,6 @@ main(int argc, char **argv)
             fetch_dir = true;
             break;
         }
-        case 'q':
-            exit(EXIT_SUCCESS);
-            break;
         }
     }
 }
