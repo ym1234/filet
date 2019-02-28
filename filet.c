@@ -460,7 +460,9 @@ main(int argc, char **argv)
             break;
         case 'q': {
             FILE *f = fopen("/tmp/filet_dir", "w");
-            fprintf(f, "%s\n", path);
+            if (f) {
+                fprintf(f, "%s\n", path);
+            }
             exit(EXIT_SUCCESS);
             break;
         }
