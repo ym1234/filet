@@ -33,6 +33,7 @@ struct direlement {
     } type;
 
     const char *d_name;
+    bool is_selected;
 };
 
 static struct termios g_old_termios;
@@ -203,7 +204,8 @@ read_dir(
                 *ents = tmp;
             }
 
-            (*ents)[n].d_name = ent->d_name;
+            (*ents)[n].d_name      = ent->d_name;
+            (*ents)[n].is_selected = false;
 
             if (S_ISDIR(sb.st_mode)) {
                 (*ents)[n].type = TYPE_DIR;
@@ -287,10 +289,11 @@ draw_line(const struct direlement *ent, bool is_sel)
     }
 
     if (is_sel) {
-        printf(">  %s", ent->d_name);
+        printf("> %c%s", ent->is_selected ? '*' : ' ', ent->d_name);
     } else {
         printf(
-            "  %s ",
+            " %c%s ",
+            ent->is_selected ? '*' : ' ',
             ent->d_name); // space to clear the last char on unindenting it
     }
 }
@@ -542,13 +545,22 @@ main(int argc, char **argv)
             spawn(path, editor, ents[sel].d_name);
             fetch_dir = true;
             break;
+        case 'm':
+            ents[sel].is_selected = !ents[sel].is_selected;
+            draw_line(&ents[sel], true);
+            printf("\r");
+            break;
         case 'x': {
             int fd = dirfd(last_dir);
-            unlinkat(
-                fd,
-                ents[sel].d_name,
-                ents[sel].type == TYPE_DIR ? AT_REMOVEDIR : 0);
-            fetch_dir = true;
+            for (size_t i = 0; i < n; ++i) {
+                if (ents[i].is_selected) {
+                    unlinkat(
+                        fd,
+                        ents[i].d_name,
+                        ents[i].type == TYPE_DIR ? AT_REMOVEDIR : 0);
+                    fetch_dir = true;
+                }
+            }
             break;
         }
         }
