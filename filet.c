@@ -36,6 +36,7 @@ struct direlement {
 };
 
 static struct termios g_old_termios;
+static FILE *devfile;
 static int g_row;
 static int g_col;
 
@@ -78,7 +79,7 @@ static bool
 get_term_size(void)
 {
     struct winsize wsize;
-    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize) < 0) {
+    if (ioctl(fileno(devfile), TIOCGWINSZ, &wsize) < 0) {
         perror("ioctl");
         return false;
     }
@@ -106,11 +107,12 @@ handle_winch(int sig)
 static void
 restore_terminal(void)
 {
-    if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &g_old_termios) < 0) {
+    if (tcsetattr(fileno(devfile), TCSAFLUSH, &g_old_termios) < 0) {
         perror("tcsetattr");
     }
 
-    printf(
+    fprintf(
+        devfile,
         "\033[?7h"    // enable line wrapping
         "\033[?25h"   // unhide cursor
         "\033[;r"     // reset scroll region
@@ -125,23 +127,34 @@ restore_terminal(void)
 static bool
 setup_terminal(void)
 {
-    setvbuf(stdout, NULL, _IOFBF, 0);
-
-    if (tcgetattr(STDIN_FILENO, &g_old_termios) < 0) {
+    /* setvbuf(stdout, NULL, _IOFBF, 0); */
+    int fd = open("/dev/tty", O_RDWR | O_NOCTTY);
+    if (fd < 0) {
+        return NULL;
+    }
+    if (tcgetattr(fd, &g_old_termios) < 0) {
         perror("tcgetattr");
-        return false;
+        return NULL;
     }
 
     struct termios raw = g_old_termios;
     raw.c_oflag &= ~OPOST;
     raw.c_lflag &= ~(ECHO | ICANON);
 
-    if (tcsetattr(STDIN_FILENO, TCSANOW, &raw) < 0) {
+    // Reading block until there is at least one byte, similar to
+    // setvbuf(stdout, NULL, _IOFBF, 0);
+    raw.c_cc[VMIN]  = 1;
+    raw.c_cc[VTIME] = 0;
+
+    if (tcsetattr(fd, TCSANOW, &raw) < 0) {
         perror("tcsetattr");
-        return false;
+        return NULL;
     }
 
-    printf(
+    devfile = fdopen(fd, "r+");
+
+    fprintf(
+        devfile,
         "\033[?1049h" // use alternative screen buffer
         "\033[?7l"    // diable line wrapping
         "\033[?25l"   // hide cursor
@@ -149,7 +162,7 @@ setup_terminal(void)
         "\033[3;%dr", // limit scrolling to scrolling area
         g_row);
 
-    return true;
+    return devfile;
 }
 
 /**
@@ -244,7 +257,7 @@ spawn(const char *path, const char *cmd, const char *argv1)
     }
 
     restore_terminal();
-    fflush(stdout);
+    fflush(devfile);
 
     if (pid == 0) {
         if (chdir(path) < 0) {
@@ -272,24 +285,25 @@ draw_line(const struct direlement *ent, bool is_sel)
 {
     switch (ent->type) {
     case TYPE_DIR:
-        printf("\033[34;1m");
+        fprintf(devfile, "\033[34;1m");
         break;
     case TYPE_SYML: // FALLTHROUGH
     case TYPE_SYML_TO_DIR:
-        printf("\033[36;1m");
+        fprintf(devfile, "\033[36;1m");
         break;
     case TYPE_EXEC:
-        printf("\033[32;1m");
+        fprintf(devfile, "\033[32;1m");
         break;
     case TYPE_NORM:
-        printf("\033[0m");
+        fprintf(devfile, "\033[0m");
         break;
     }
 
     if (is_sel) {
-        printf(">  %s", ent->d_name);
+        fprintf(devfile, ">  %s", ent->d_name);
     } else {
-        printf(
+        fprintf(
+            devfile,
             "  %s ",
             ent->d_name); // space to clear the last char on unindenting it
     }
@@ -308,7 +322,8 @@ redraw(
     size_t offset)
 {
     // clear screen and redraw status
-    printf(
+    fprintf(
+        devfile,
         "\033[2J"       // clear screen
         "\033[H"        // go to 0,0
         "%s"            // print username@hostname
@@ -320,26 +335,27 @@ redraw(
         n);
 
     if (n == 0) {
-        printf("\033[31;7mdirectory empty\033[27m");
+        fprintf(devfile, "\033[31;7mdirectory empty\033[27m");
     } else {
         for (size_t i = offset; i < n && i - offset < (size_t)g_row - 2; ++i) {
-            printf("\n");
+            fprintf(devfile, "\n");
             draw_line(&ents[i], i == sel);
-            printf("\r");
+            fprintf(devfile, "\r");
         }
     }
 
     // move cursor to selection
-    printf("\033[3;1H");
+    fprintf(devfile, "\033[3;1H");
 }
 
 int
 main(int argc, char **argv)
 {
-    if (!(isatty(STDIN_FILENO) && isatty(STDOUT_FILENO))) {
-        fprintf(stderr, "isatty: not connected to a tty");
-        exit(EXIT_FAILURE);
-    }
+    /* doesn't matter anymore i think, we always just open /dev/tty */
+    /* if (!(isatty(STDIN_FILENO) && isatty(STDOUT_FILENO))) { */
+    /*     fprintf(stderr, "isatty: not connected to a tty\n"); */
+    /*     exit(EXIT_FAILURE); */
+    /* } */
 
     char *path = malloc(PATH_MAX);
     if (!path) {
@@ -382,6 +398,10 @@ main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
+    if (!setup_terminal()) {
+        exit(EXIT_FAILURE);
+    }
+
     if (!get_term_size()) {
         exit(EXIT_FAILURE);
     }
@@ -390,11 +410,6 @@ main(int argc, char **argv)
         perror("signal");
         exit(EXIT_FAILURE);
     }
-
-    if (!setup_terminal()) {
-        exit(EXIT_FAILURE);
-    }
-
     atexit(restore_terminal);
 
     char *user_and_hostname = malloc(
@@ -427,9 +442,9 @@ main(int argc, char **argv)
             redraw(ents, user_and_hostname, path, n, sel, 0);
         }
 
-        fflush(stdout);
+        fflush(devfile);
 
-        int c = getchar();
+        int c = fgetc(devfile);
 
         switch (c) {
         case 'h':
@@ -453,11 +468,13 @@ main(int argc, char **argv)
             break;
         case 's':
             spawn(path, shell, NULL);
+			printf("here");
             fetch_dir = true;
             break;
         case 'q': {
-            FILE *f = fopen("/tmp/filet_dir", "w");
-            fprintf(f, "%s\n", path);
+            /* restore_terminal(); */
+            fprintf(stdout, "%s\n", path);
+            fflush(stdout);
             exit(EXIT_SUCCESS);
             break;
         }
@@ -471,10 +488,10 @@ main(int argc, char **argv)
         case 'j':
             if (sel < n - 1) {
                 draw_line(&ents[sel], false);
-                printf("\r\n");
+                fprintf(devfile, "\r\n");
                 ++sel;
                 draw_line(&ents[sel], true);
-                printf("\r");
+                fprintf(devfile, "\r");
 
                 if (y < (size_t)g_row - 3) {
                     ++y;
@@ -485,14 +502,14 @@ main(int argc, char **argv)
             if (sel > 0) {
                 draw_line(&ents[sel], false);
                 if (y == 0) {
-                    printf("\r\033[L");
+                    fprintf(devfile, "\r\033[L");
                 } else {
-                    printf("\r\033[A");
+                    fprintf(devfile, "\r\033[A");
                     --y;
                 }
                 --sel;
                 draw_line(&ents[sel], true);
-                printf("\r");
+                fprintf(devfile, "\r");
             }
             break;
         case 'l':
@@ -509,10 +526,10 @@ main(int argc, char **argv)
         case 'g':
             if (sel - y == 0) {
                 draw_line(&ents[sel], false);
-                printf("\033[3;1H");
+                fprintf(devfile, "\033[3;1H");
                 sel = 0;
                 draw_line(&ents[sel], true);
-                printf("\r");
+                fprintf(devfile, "\r");
             } else {
                 // screen needs to be redrawn
                 sel = 0;
@@ -523,19 +540,20 @@ main(int argc, char **argv)
         case 'G':
             if (sel + g_row - 2 - y >= n) {
                 draw_line(&ents[sel], false);
-                printf(
+                fprintf(
+                    devfile,
                     "\033[%lu;1H",
                     2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
                 sel = n - 1;
                 y   = g_row - 3;
                 draw_line(&ents[sel], true);
-                printf("\r");
+                fprintf(devfile, "\r");
             } else {
                 // screen needs to be redrawn
                 sel = n - 1;
                 y   = g_row - 3;
                 redraw(ents, user_and_hostname, path, n, sel, n - (g_row - 2));
-                printf("\033[%d;1H", g_row);
+                fprintf(devfile, "\033[%d;1H", g_row);
             }
             break;
         case 'e':
