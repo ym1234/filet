@@ -127,14 +127,13 @@ restore_terminal(void)
 static bool
 setup_terminal(void)
 {
-    /* setvbuf(stdout, NULL, _IOFBF, 0); */
     int fd = open("/dev/tty", O_RDWR | O_NOCTTY);
     if (fd < 0) {
-        return NULL;
+        return false;
     }
     if (tcgetattr(fd, &g_old_termios) < 0) {
         perror("tcgetattr");
-        return NULL;
+        return false;
     }
 
     struct termios raw = g_old_termios;
@@ -148,7 +147,7 @@ setup_terminal(void)
 
     if (tcsetattr(fd, TCSANOW, &raw) < 0) {
         perror("tcsetattr");
-        return NULL;
+        return false;
     }
 
     devfile = fdopen(fd, "r+");
@@ -156,13 +155,13 @@ setup_terminal(void)
     fprintf(
         devfile,
         "\033[?1049h" // use alternative screen buffer
-        "\033[?7l"    // diable line wrapping
+        "\033[?7l"    // disable line wrapping
         "\033[?25l"   // hide cursor
         "\033[2J"     // clear screen
         "\033[3;%dr", // limit scrolling to scrolling area
         g_row);
 
-    return devfile;
+    return true;
 }
 
 /**
@@ -401,6 +400,7 @@ main(int argc, char **argv)
     if (!setup_terminal()) {
         exit(EXIT_FAILURE);
     }
+    atexit(restore_terminal);
 
     if (!get_term_size()) {
         exit(EXIT_FAILURE);
@@ -410,7 +410,7 @@ main(int argc, char **argv)
         perror("signal");
         exit(EXIT_FAILURE);
     }
-    atexit(restore_terminal);
+
 
     char *user_and_hostname = malloc(
         strlen(user) + strlen(hostname) + strlen("\033[32;1m@\033[0m:") + 1);
@@ -468,11 +468,9 @@ main(int argc, char **argv)
             break;
         case 's':
             spawn(path, shell, NULL);
-			printf("here");
             fetch_dir = true;
             break;
         case 'q': {
-            /* restore_terminal(); */
             fprintf(stdout, "%s\n", path);
             fflush(stdout);
             exit(EXIT_SUCCESS);
@@ -481,7 +479,7 @@ main(int argc, char **argv)
         }
 
         if (n == 0) {
-            continue; // rest of the commands requires at least one entry
+            continue; // rest of the commands require at least one entry
         }
 
         switch (c) {
