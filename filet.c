@@ -268,6 +268,8 @@ spawn(const char *path, const char *cmd, const char *argv1)
     fflush(devfile);
 
     if (pid == 0) {
+        // Set the stdout of the program to /dev/tty
+        dup2(STDOUT_FILENO, fileno(devfile));
         if (chdir(path) < 0) {
             _exit(EXIT_FAILURE);
         }
