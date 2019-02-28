@@ -40,6 +40,15 @@ static FILE *devfile;
 static int g_row;
 static int g_col;
 
+static void
+tprintf(const char *format, ...)
+{
+    va_list args;
+    va_start(args, format);
+    vfprintf(devfile, format, args);
+    va_end(args);
+}
+
 /**
  * Got too used to rust. This falls back to fallback, if name isn't set
  */
@@ -284,25 +293,24 @@ draw_line(const struct direlement *ent, bool is_sel)
 {
     switch (ent->type) {
     case TYPE_DIR:
-        fprintf(devfile, "\033[34;1m");
+        tprintf("\033[34;1m");
         break;
     case TYPE_SYML: // FALLTHROUGH
     case TYPE_SYML_TO_DIR:
-        fprintf(devfile, "\033[36;1m");
+        tprintf("\033[36;1m");
         break;
     case TYPE_EXEC:
-        fprintf(devfile, "\033[32;1m");
+        tprintf("\033[32;1m");
         break;
     case TYPE_NORM:
-        fprintf(devfile, "\033[0m");
+        tprintf("\033[0m");
         break;
     }
 
     if (is_sel) {
-        fprintf(devfile, ">  %s", ent->d_name);
+        tprintf(">  %s", ent->d_name);
     } else {
-        fprintf(
-            devfile,
+        tprintf(
             "  %s ",
             ent->d_name); // space to clear the last char on unindenting it
     }
@@ -334,17 +342,17 @@ redraw(
         n);
 
     if (n == 0) {
-        fprintf(devfile, "\033[31;7mdirectory empty\033[27m");
+        tprintf("\033[31;7mdirectory empty\033[27m");
     } else {
         for (size_t i = offset; i < n && i - offset < (size_t)g_row - 2; ++i) {
-            fprintf(devfile, "\n");
+            tprintf("\n");
             draw_line(&ents[i], i == sel);
-            fprintf(devfile, "\r");
+            tprintf("\r");
         }
     }
 
     // move cursor to selection
-    fprintf(devfile, "\033[3;1H");
+    tprintf("\033[3;1H");
 }
 
 int
@@ -410,7 +418,6 @@ main(int argc, char **argv)
         perror("signal");
         exit(EXIT_FAILURE);
     }
-
 
     char *user_and_hostname = malloc(
         strlen(user) + strlen(hostname) + strlen("\033[32;1m@\033[0m:") + 1);
@@ -486,10 +493,10 @@ main(int argc, char **argv)
         case 'j':
             if (sel < n - 1) {
                 draw_line(&ents[sel], false);
-                fprintf(devfile, "\r\n");
+                tprintf("\r\n");
                 ++sel;
                 draw_line(&ents[sel], true);
-                fprintf(devfile, "\r");
+                tprintf("\r");
 
                 if (y < (size_t)g_row - 3) {
                     ++y;
@@ -500,14 +507,14 @@ main(int argc, char **argv)
             if (sel > 0) {
                 draw_line(&ents[sel], false);
                 if (y == 0) {
-                    fprintf(devfile, "\r\033[L");
+                    tprintf("\r\033[L");
                 } else {
-                    fprintf(devfile, "\r\033[A");
+                    tprintf("\r\033[A");
                     --y;
                 }
                 --sel;
                 draw_line(&ents[sel], true);
-                fprintf(devfile, "\r");
+                tprintf("\r");
             }
             break;
         case 'l':
@@ -524,10 +531,10 @@ main(int argc, char **argv)
         case 'g':
             if (sel - y == 0) {
                 draw_line(&ents[sel], false);
-                fprintf(devfile, "\033[3;1H");
+                tprintf("\033[3;1H");
                 sel = 0;
                 draw_line(&ents[sel], true);
-                fprintf(devfile, "\r");
+                tprintf("\r");
             } else {
                 // screen needs to be redrawn
                 sel = 0;
@@ -545,13 +552,13 @@ main(int argc, char **argv)
                 sel = n - 1;
                 y   = g_row - 3;
                 draw_line(&ents[sel], true);
-                fprintf(devfile, "\r");
+                tprintf("\r");
             } else {
                 // screen needs to be redrawn
                 sel = n - 1;
                 y   = g_row - 3;
                 redraw(ents, user_and_hostname, path, n, sel, n - (g_row - 2));
-                fprintf(devfile, "\033[%d;1H", g_row);
+                tprintf("\033[%d;1H", g_row);
             }
             break;
         case 'e':
