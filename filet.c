@@ -120,9 +120,7 @@ restore_terminal(void)
         perror("tcsetattr");
     }
 
-    fprintf(
-        devfile,
-        "\033[?7h"    // enable line wrapping
+    tprintf(
         "\033[?25h"   // unhide cursor
         "\033[;r"     // reset scroll region
         "\033[?1049l" // restore main screen
@@ -161,8 +159,7 @@ setup_terminal(void)
 
     devfile = fdopen(fd, "r+");
 
-    fprintf(
-        devfile,
+    tprintf(
         "\033[?1049h" // use alternative screen buffer
         "\033[?7l"    // disable line wrapping
         "\033[?25l"   // hide cursor
@@ -480,7 +477,7 @@ main(int argc, char **argv)
             fetch_dir = true;
             break;
         case 'q': {
-            fprintf(stdout, "%s\n", path);
+            printf("%s\n", path);
             fflush(stdout);
             exit(EXIT_SUCCESS);
             break;
