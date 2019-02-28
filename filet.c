@@ -333,7 +333,7 @@ redraw(
     }
 
     // move cursor to selection
-    printf("\033[3;1H");
+    printf("\033[3H");
 }
 
 int
@@ -518,7 +518,7 @@ main(int argc, char **argv)
         case 'g':
             if (sel - y == 0) {
                 draw_line(&ents[sel], false);
-                printf("\033[3;1H");
+                printf("\033[3H");
                 sel = 0;
                 draw_line(&ents[sel], true);
                 printf("\r");
@@ -533,7 +533,7 @@ main(int argc, char **argv)
             if (sel + g_row - 2 - y >= n) {
                 draw_line(&ents[sel], false);
                 printf(
-                    "\033[%lu;1H",
+                    "\033[%luH",
                     2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
                 sel = n - 1;
                 y   = g_row - 3;
@@ -544,7 +544,7 @@ main(int argc, char **argv)
                 sel = n - 1;
                 y   = g_row - 3;
                 redraw(ents, user_and_hostname, path, n, sel, n - (g_row - 2));
-                printf("\033[%d;1H", g_row);
+                printf("\033[%dH", g_row);
             }
             break;
         case 'e':
