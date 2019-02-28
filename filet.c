@@ -463,6 +463,10 @@ main(int argc, char **argv)
             if (f) {
                 fprintf(f, "%s\n", path);
             }
+            f = fopen("/tmp/filet_sel", "w");
+            if (f) {
+                fprintf(f, "%s/%s\n", path, ents[sel].d_name);
+            }
             exit(EXIT_SUCCESS);
             break;
         }
