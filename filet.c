@@ -32,7 +32,7 @@ struct direlement {
         TYPE_NORM,
     } type;
 
-    const char *d_name;
+    char name[NAME_MAX + 1];
     bool is_selected;
 };
 
@@ -69,7 +69,7 @@ direlemcmp(const void *va, const void *vb)
         return a_is_dir ? -1 : 1;
     }
 
-    return strcmp(a->d_name, b->d_name);
+    return strcmp(a->name, b->name);
 }
 
 /**
@@ -163,16 +163,11 @@ read_dir(
     const char *path,
     struct direlement **ents,
     size_t *ents_size,
-    DIR **last_dir,
     bool show_hidden)
 {
     size_t n = 0;
     DIR *dir;
-    if (*last_dir) {
-        closedir(*last_dir);
-    }
     dir       = opendir(path);
-    *last_dir = dir;
     if (dir) {
         struct dirent *ent;
         while ((ent = readdir(dir))) {
@@ -204,13 +199,13 @@ read_dir(
                 *ents = tmp;
             }
 
-            (*ents)[n].d_name      = ent->d_name;
+            strcpy((*ents)[n].name, ent->d_name);
             (*ents)[n].is_selected = false;
 
             if (S_ISDIR(sb.st_mode)) {
                 (*ents)[n].type = TYPE_DIR;
             } else if (S_ISLNK(sb.st_mode)) {
-                if (!(fstatat(dirfd(dir), (*ents)[n].d_name, &sb, 0) < 0 ||
+                if (!(fstatat(dirfd(dir), (*ents)[n].name, &sb, 0) < 0 ||
                       !S_ISDIR(sb.st_mode))) {
                     (*ents)[n].type = TYPE_SYML_TO_DIR;
                 } else {
@@ -227,6 +222,7 @@ read_dir(
             ++n;
         }
         qsort(*ents, n, sizeof(**ents), direlemcmp);
+        closedir(dir);
     }
 
     return n;
@@ -289,12 +285,12 @@ draw_line(const struct direlement *ent, bool is_sel)
     }
 
     if (is_sel) {
-        printf("> %c%s", ent->is_selected ? '*' : ' ', ent->d_name);
+        printf("> %c%s", ent->is_selected ? '*' : ' ', ent->name);
     } else {
         printf(
             " %c%s ",
             ent->is_selected ? '*' : ' ',
-            ent->d_name); // space to clear the last char on unindenting it
+            ent->name); // space to clear the last char on unindenting it
     }
 }
 
@@ -417,7 +413,6 @@ main(int argc, char **argv)
     bool fetch_dir   = true;
     size_t sel       = 0;
     size_t y         = 0;
-    DIR *last_dir    = NULL;
     size_t n;
 
     for (;;) {
@@ -425,7 +420,7 @@ main(int argc, char **argv)
             fetch_dir = false;
             sel       = 0;
             y         = 0;
-            n = read_dir(path, &ents, &ents_size, &last_dir, show_hidden);
+            n = read_dir(path, &ents, &ents_size, show_hidden);
 
             redraw(ents, user_and_hostname, path, n, sel, 0);
         }
@@ -465,7 +460,7 @@ main(int argc, char **argv)
             }
             f = fopen("/tmp/filet_sel", "w");
             if (f) {
-                fprintf(f, "%s/%s\n", path, ents[sel].d_name);
+                fprintf(f, "%s/%s\n", path, ents[sel].name);
             }
             exit(EXIT_SUCCESS);
             break;
@@ -511,7 +506,7 @@ main(int argc, char **argv)
                 if (path[1] != '\0') {
                     strcat(path, "/");
                 }
-                strcat(path, ents[sel].d_name);
+                strcat(path, ents[sel].name);
                 fetch_dir = true;
             }
             break;
@@ -548,7 +543,7 @@ main(int argc, char **argv)
             }
             break;
         case 'e':
-            spawn(path, editor, ents[sel].d_name);
+            spawn(path, editor, ents[sel].name);
             fetch_dir = true;
             break;
         case 'm':
@@ -557,16 +552,21 @@ main(int argc, char **argv)
             printf("\r");
             break;
         case 'x': {
-            int fd = dirfd(last_dir);
+            int fd = open(path, 0);
+            if (fd < 0) {
+                printf("\033[s\033[2H\033[0mfailed to open dir: %s\033[K\033[u", path);
+                continue;
+            }
             for (size_t i = 0; i < n; ++i) {
                 if (ents[i].is_selected) {
                     unlinkat(
                         fd,
-                        ents[i].d_name,
+                        ents[i].name,
                         ents[i].type == TYPE_DIR ? AT_REMOVEDIR : 0);
                     fetch_dir = true;
                 }
             }
+            close(fd);
             break;
         }
         }
