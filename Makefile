@@ -3,7 +3,7 @@ MANPAGE = filet.1
 PREFIX ?= /usr/local
 
 CFLAGS   += -std=c11 -Wall -Wextra -pedantic
-CPPFLAGS += -D_POSIX_C_SOURCE=200809L
+CPPFLAGS += -D_XOPEN_SOURCE=700
 
 .PHONY: all install clean
 

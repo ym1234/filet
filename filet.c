@@ -13,6 +13,7 @@
 
 #include <dirent.h>
 #include <fcntl.h>
+#include <ftw.h>
 #include <libgen.h>
 #include <limits.h>
 #include <sys/ioctl.h>
@@ -39,6 +40,19 @@ struct direlement {
 static struct termios g_old_termios;
 static int g_row;
 static int g_col;
+
+/**
+ * Deletes a file. Can be passed to nftw
+ */
+static int
+delete_file(
+    const char *fpath,
+    const struct stat *sb,
+    int typeflag,
+    struct FTW *ftwbuf)
+{
+    return remove(fpath);
+}
 
 /**
  * Got too used to rust. This falls back to fallback, if name isn't set
@@ -558,12 +572,21 @@ main(int argc, char **argv)
             }
             for (size_t i = 0; i < n; ++i) {
                 if (ents[i].is_selected) {
-                    unlinkat(
-                        fd,
-                        ents[i].name,
-                        ents[i].type == TYPE_DIR ? AT_REMOVEDIR : 0);
-                    fetch_dir = true;
+                    if (ents[i].type == TYPE_DIR) {
+                        nftw(
+                            ents[i].name,
+                            delete_file,
+                            32,
+                            FTW_DEPTH | FTW_MOUNT | FTW_PHYS);
+                    } else {
+                        unlinkat(
+                            fd,
+                            ents[i].name,
+                            ents[i].type == TYPE_DIR ? AT_REMOVEDIR : 0);
+                    }
                 }
+
+                fetch_dir = true;
             }
             close(fd);
             break;
