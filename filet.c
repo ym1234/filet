@@ -167,7 +167,7 @@ read_dir(
 {
     size_t n = 0;
     DIR *dir;
-    dir       = opendir(path);
+    dir = opendir(path);
     if (dir) {
         struct dirent *ent;
         while ((ent = readdir(dir))) {
@@ -420,7 +420,7 @@ main(int argc, char **argv)
             fetch_dir = false;
             sel       = 0;
             y         = 0;
-            n = read_dir(path, &ents, &ents_size, show_hidden);
+            n         = read_dir(path, &ents, &ents_size, show_hidden);
 
             redraw(ents, user_and_hostname, path, n, sel, 0);
         }
@@ -554,7 +554,6 @@ main(int argc, char **argv)
         case 'x': {
             int fd = open(path, 0);
             if (fd < 0) {
-                printf("\033[s\033[2H\033[0mfailed to open dir: %s\033[K\033[u", path);
                 continue;
             }
             for (size_t i = 0; i < n; ++i) {
