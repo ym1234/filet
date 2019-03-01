@@ -319,7 +319,7 @@ redraw(
         n);
 
     if (n == 0) {
-        printf("\033[31;7mdirectory empty\033[27m");
+        printf("\n\033[31;7mdirectory empty\033[27m");
     } else {
         for (size_t i = offset; i < n && i - offset < (size_t)g_row - 2; ++i) {
             printf("\n");
