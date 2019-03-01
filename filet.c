@@ -32,7 +32,7 @@ struct direlement {
         TYPE_NORM,
     } type;
 
-    const char *d_name;
+    const char d_name[NAME_MAX + 1];
     bool is_selected;
 };
 
@@ -148,17 +148,13 @@ setup_terminal(void)
     raw.c_oflag &= ~OPOST;
     raw.c_lflag &= ~(ECHO | ICANON);
 
-    // Reading block until there is at least one byte, similar to
-    // setvbuf(stdout, NULL, _IOFBF, 0);
-    raw.c_cc[VMIN]  = 1;
-    raw.c_cc[VTIME] = 0;
-
     if (tcsetattr(fd, TCSANOW, &raw) < 0) {
         perror("tcsetattr");
         return false;
     }
 
     devfile = fdopen(fd, "r+");
+    setvbuf(devfile, NULL, _IOFBF, 0);
 
     tprintf(
         "\033[?1049h" // use alternative screen buffer
@@ -222,7 +218,7 @@ read_dir(
                 *ents = tmp;
             }
 
-            (*ents)[n].d_name      = ent->d_name;
+            strcpy((*ents)[n].d_name, ent->d_name);
             (*ents)[n].is_selected = false;
 
             if (S_ISDIR(sb.st_mode)) {
@@ -331,8 +327,7 @@ redraw(
     size_t offset)
 {
     // clear screen and redraw status
-    fprintf(
-        devfile,
+    tprintf(
         "\033[2J"       // clear screen
         "\033[H"        // go to 0,0
         "%s"            // print username@hostname
@@ -354,7 +349,7 @@ redraw(
     }
 
     // move cursor to selection
-    tprintf("\033[3;1H");
+    tprintf("\033[3H");
 }
 
 int
@@ -481,7 +476,14 @@ main(int argc, char **argv)
             break;
         case 'q': {
             printf("%s\n", path);
-            fflush(stdout);
+            FILE *f = fopen("/tmp/filet_dir", "w");
+            if (f) {
+                fprintf(f, "%s\n", path);
+            }
+            f = fopen("/tmp/filet_sel", "w");
+            if (f) {
+                fprintf(f, "%s/%s\n", path, ents[sel].d_name);
+            }
             exit(EXIT_SUCCESS);
             break;
         }
@@ -533,7 +535,7 @@ main(int argc, char **argv)
         case 'g':
             if (sel - y == 0) {
                 draw_line(&ents[sel], false);
-                tprintf("\033[3;1H");
+                tprintf("\033[3H");
                 sel = 0;
                 draw_line(&ents[sel], true);
                 tprintf("\r");
@@ -547,9 +549,8 @@ main(int argc, char **argv)
         case 'G':
             if (sel + g_row - 2 - y >= n) {
                 draw_line(&ents[sel], false);
-                fprintf(
-                    devfile,
-                    "\033[%lu;1H",
+                tprintf(
+                    "\033[%luH",
                     2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
                 sel = n - 1;
                 y   = g_row - 3;
@@ -560,7 +561,7 @@ main(int argc, char **argv)
                 sel = n - 1;
                 y   = g_row - 3;
                 redraw(ents, user_and_hostname, path, n, sel, n - (g_row - 2));
-                tprintf("\033[%d;1H", g_row);
+                tprintf("\033[%dH", g_row);
             }
             break;
         case 'e':
