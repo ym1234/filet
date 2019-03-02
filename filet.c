@@ -40,6 +40,7 @@ struct direlement {
 static struct termios g_old_termios;
 static int g_row;
 static int g_col;
+static bool g_needs_redraw;
 
 /**
  * Deletes a file. Can be passed to nftw
@@ -112,6 +113,7 @@ handle_winch(int sig)
 {
     signal(sig, SIG_IGN);
     get_term_size();
+    g_needs_redraw = true;
     signal(sig, handle_winch);
 }
 
@@ -327,10 +329,12 @@ redraw(
         "%s"            // print username@hostname
         "\033[34;1m%s"  // print path
         " \033[0m[%zu]" // number of entries
+        "\033[3;%dr"    // limit scrolling to scrolling area
         "\r\n",         // enter scrolling region
         user_and_hostname,
         path,
-        n);
+        n,
+        g_row);
 
     if (n == 0) {
         printf("\n\033[31;7mdirectory empty\033[27m");
@@ -341,9 +345,6 @@ redraw(
             printf("\r");
         }
     }
-
-    // move cursor to selection
-    printf("\033[3H");
 }
 
 int
@@ -432,12 +433,27 @@ main(int argc, char **argv)
 
     for (;;) {
         if (fetch_dir) {
-            fetch_dir = false;
-            sel       = 0;
-            y         = 0;
-            n         = read_dir(path, &ents, &ents_size, show_hidden);
+            fetch_dir      = false;
+            sel            = 0;
+            y              = 0;
+            n              = read_dir(path, &ents, &ents_size, show_hidden);
+            g_needs_redraw = true;
+        }
 
-            redraw(ents, user_and_hostname, path, n, sel, 0);
+        if (g_needs_redraw) {
+            g_needs_redraw     = false;
+            size_t scroll_size = g_row - 3;
+
+            int empty_space = -(n - (sel - y + scroll_size));
+            if (y > scroll_size) {
+                y = scroll_size;
+            } else if (empty_space > 0) {
+                y = n >= scroll_size ? y + empty_space + 1 : sel;
+            }
+            redraw(ents, user_and_hostname, path, n, sel, sel - y);
+
+            // move cursor to selection
+            printf("\033[%zuH", y + 3);
         }
 
         fflush(stdout);
@@ -542,6 +558,7 @@ main(int argc, char **argv)
                 sel = 0;
                 y   = 0;
                 redraw(ents, user_and_hostname, path, n, sel, 0);
+                printf("\033[3H");
             }
             break;
         case 'G':
