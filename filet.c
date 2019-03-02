@@ -375,6 +375,7 @@ main(int argc, char **argv)
     const char *editor = getenv_or("EDITOR", "vi");
     const char *shell  = getenv_or("SHELL", "/bin/sh");
     const char *home   = getenv_or("HOME", "/");
+    const char *opener = getenv("FILET_OPENER");
     const char *user   = getlogin();
 
     char *hostname = malloc(HOST_NAME_MAX);
@@ -513,6 +514,7 @@ main(int argc, char **argv)
                 printf("\r");
             }
             break;
+        case '\n': // FALLTHROUGH
         case 'l':
             if (ents[sel].type == TYPE_DIR ||
                 ents[sel].type == TYPE_SYML_TO_DIR) {
@@ -521,8 +523,12 @@ main(int argc, char **argv)
                     strcat(path, "/");
                 }
                 strcat(path, ents[sel].name);
-                fetch_dir = true;
+            } else {
+                if (opener) {
+                    spawn(path, opener, ents[sel].name);
+                }
             }
+            fetch_dir = true;
             break;
         case 'g':
             if (sel - y == 0) {
