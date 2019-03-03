@@ -410,6 +410,16 @@ main(int argc, char **argv)
         }
     }
 
+    const char *depth = getenv("FILET_DEPTH");
+    if (depth) {
+        int level = atoi(depth) + 1;
+        char levelstr[20];
+        snprintf(levelstr, sizeof(levelstr), "%d", level);
+        setenv("FILET_DEPTH", levelstr, true);
+    } else {
+        setenv("FILET_DEPTH", "1", true);
+    }
+
     const char *editor = getenv_or("EDITOR", "vi");
     const char *shell  = getenv_or("SHELL", "/bin/sh");
     const char *home   = getenv_or("HOME", "/");
