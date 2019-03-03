@@ -347,6 +347,43 @@ redraw(
     }
 }
 
+/**
+ * Reads a key from stdin
+ *
+ * Acts as a getchar wrapper that transforms arrow keys to hjkl
+ */
+static int
+getkey(void)
+{
+    int c = getchar();
+    if (c != '\033') {
+        return c;
+    }
+
+    c = getchar();
+    if (c != '[') {
+        return c;
+    }
+
+    c = getchar();
+    switch (c) {
+    case 'A':
+        return 'k';
+        break;
+    case 'B':
+        return 'j';
+        break;
+    case 'C':
+        return 'l';
+        break;
+    case 'D':
+        return 'h';
+        break;
+    }
+
+    return c;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -458,9 +495,9 @@ main(int argc, char **argv)
 
         fflush(stdout);
 
-        int c = getchar();
+        int k = getkey();
 
-        switch (c) {
+        switch (k) {
         case 'h':
             dirname(path);
             fetch_dir = true;
@@ -502,7 +539,7 @@ main(int argc, char **argv)
             continue; // rest of the commands requires at least one entry
         }
 
-        switch (c) {
+        switch (k) {
         case 'j':
             if (sel < n - 1) {
                 draw_line(&ents[sel], false);
