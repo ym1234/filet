@@ -517,10 +517,22 @@ main(int argc, char **argv)
         case 'r':
             fetch_dir = true;
             break;
-        case 's':
+        case 's': {
+            FILE *f = fopen("/tmp/filet_dir", "w");
+            if (f) {
+                fprintf(f, "%s\n", path);
+                fclose(f);
+            }
+
+            f = fopen("/tmp/filet_sel", "w");
+            if (f) {
+                fprintf(f, "%s/%s\n", path, ents[sel].name);
+                fclose(f);
+            }
             spawn(path, shell, NULL);
             fetch_dir = true;
             break;
+        }
         case 'q': {
             FILE *f = fopen("/tmp/filet_dir", "w");
             if (f) {
