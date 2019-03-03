@@ -539,12 +539,13 @@ main(int argc, char **argv)
                     strcat(path, "/");
                 }
                 strcat(path, ents[sel].name);
+                fetch_dir = true;
             } else {
                 if (opener) {
                     spawn(path, opener, ents[sel].name);
                 }
+                fetch_dir = true;
             }
-            fetch_dir = true;
             break;
         case 'g':
             if (sel - y == 0) {
