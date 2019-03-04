@@ -118,7 +118,7 @@ handle_winch(int sig)
 }
 
 /**
- * Resets the terminal to it's prior state
+ * Resets the terminal to its prior state
  */
 static void
 restore_terminal(void)
