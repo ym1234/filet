@@ -578,7 +578,7 @@ main(int argc, char **argv)
         }
 
         if (n == 0) {
-            continue; // rest of the commands requires at least one entry
+            continue; // rest of the commands require at least one entry
         }
 
         switch (k) {
