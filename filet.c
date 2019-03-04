@@ -16,8 +16,10 @@
 #include <ftw.h>
 #include <libgen.h>
 #include <limits.h>
+#include <pwd.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -424,7 +426,14 @@ main(int argc, char **argv)
     const char *shell  = getenv_or("SHELL", "/bin/sh");
     const char *home   = getenv_or("HOME", "/");
     const char *opener = getenv("FILET_OPENER");
-    const char *user   = getlogin();
+
+    struct passwd *pwuid = getpwuid(geteuid());
+    if (!pwuid) {
+        perror("getpwuid");
+        exit(EXIT_FAILURE);
+    }
+
+    const char *user = pwuid->pw_name;
 
     char *hostname = malloc(HOST_NAME_MAX);
     if (!hostname) {
@@ -434,7 +443,7 @@ main(int argc, char **argv)
     if (gethostname(hostname, HOST_NAME_MAX) < 0) {
         perror("gethostname");
         free(hostname);
-        hostname = NULL;
+        hostname[0] = '\0';
     }
 
     size_t ents_size        = ENT_ALLOC_NUM;
@@ -459,18 +468,29 @@ main(int argc, char **argv)
 
     atexit(restore_terminal);
 
-    char *user_and_hostname = malloc(
-        strlen(user) + strlen(hostname) + strlen("\033[32;1m@\033[0m:") + 1);
+    size_t user_and_host_size =
+        strlen(user) + strlen(hostname) + strlen("\033[32;1m@\033[0m:") + 1;
+    char *user_and_hostname = malloc(user_and_host_size);
+    ;
     if (!user_and_hostname) {
         perror("malloc");
         exit(EXIT_FAILURE);
     }
 
-    strcpy(user_and_hostname, "\033[32;1m");
-    strcat(user_and_hostname, user);
-    strcat(user_and_hostname, "@");
-    strcat(user_and_hostname, hostname);
-    strcat(user_and_hostname, "\033[0m:");
+    if (hostname[0] != '\0') {
+        snprintf(
+            user_and_hostname,
+            user_and_host_size,
+            "\033[32;1m%s@%s\033[0m:",
+            user,
+            hostname);
+    } else {
+        snprintf(
+            user_and_hostname,
+            user_and_host_size,
+            "\033[32;1m%s\033[0m:",
+            user);
+    }
 
     bool show_hidden = false;
     bool fetch_dir   = true;
