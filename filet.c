@@ -423,8 +423,6 @@ getkey(void)
     default:
         return -1; // unknown escape escape sequence
     }
-
-    return c[0];
 }
 
 int
