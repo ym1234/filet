@@ -5,6 +5,7 @@
  * You can obtain one at https://mozilla.org/MPL/2.0/.
  */
 
+#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -40,9 +41,8 @@ struct direlement {
 };
 
 static struct termios g_old_termios;
-static int g_row;
-static int g_col;
-static bool g_needs_redraw;
+static volatile sig_atomic_t g_needs_redraw = false;
+static volatile sig_atomic_t g_quit         = false;
 
 /**
  * Deletes a file. Can be passed to nftw
@@ -90,10 +90,10 @@ direlemcmp(const void *va, const void *vb)
 }
 
 /**
- * Sets the terminal size on g_row
+ * Sets the terminal size on row
  */
 static bool
-get_term_size(void)
+get_term_size(int *row, int *col)
 {
     struct winsize wsize;
     if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &wsize) < 0) {
@@ -101,8 +101,8 @@ get_term_size(void)
         return false;
     }
 
-    g_row = wsize.ws_row;
-    g_col = wsize.ws_col;
+    *row = wsize.ws_row;
+    *col = wsize.ws_col;
 
     return true;
 }
@@ -113,10 +113,35 @@ get_term_size(void)
 static void
 handle_winch(int sig)
 {
-    signal(sig, SIG_IGN);
-    get_term_size();
     g_needs_redraw = true;
-    signal(sig, handle_winch);
+}
+
+/**
+ * Used for SIGINT and SIGTERM to pass the exit signal to main()
+ */
+static void
+handle_exit(int sig)
+{
+    g_quit = true;
+}
+
+/**
+ * Saves the current session (current path and selected file)
+ * to /tmp/filet_dir and /tmp/filet_sel
+ */
+static void
+save_session(const char *path, const char *sel_name)
+{
+    FILE *f = fopen("/tmp/filet_dir", "w");
+    if (f) {
+        fprintf(f, "%s\n", path);
+        fclose(f);
+    }
+    f = fopen("/tmp/filet_sel", "w");
+    if (f) {
+        fprintf(f, "%s/%s\n", path, sel_name);
+        fclose(f);
+    }
 }
 
 /**
@@ -138,18 +163,28 @@ restore_terminal(void)
 }
 
 /**
- * Sets up the terminal for TUI use (read every char, differentiate \r and \n,
- * don't echo, hide the cursor, fix a scroll region, switch to a second screen)
+ * Saves old terminal configuration to reset on SIGINT or SIGTERM
+ * restore_terminal will use this to restore the settings.
  */
 static bool
-setup_terminal(void)
+get_termios(void)
 {
-    setvbuf(stdout, NULL, _IOFBF, 0);
-
     if (tcgetattr(STDIN_FILENO, &g_old_termios) < 0) {
         perror("tcgetattr");
         return false;
     }
+
+    return true;
+}
+
+/**
+ * Sets up the terminal for TUI use (read every char, differentiate \r and \n,
+ * don't echo, hide the cursor, fix a scroll region, switch to a second screen)
+ */
+static bool
+setup_terminal(int row)
+{
+    setvbuf(stdout, NULL, _IOFBF, 0);
 
     struct termios raw = g_old_termios;
     raw.c_oflag &= ~OPOST;
@@ -166,7 +201,7 @@ setup_terminal(void)
         "\033[?25l"   // hide cursor
         "\033[2J"     // clear screen
         "\033[3;%dr", // limit scrolling to scrolling area
-        g_row);
+        row);
 
     return true;
 }
@@ -250,7 +285,7 @@ read_dir(
  * Spawns a new process, waits for it and returns
  */
 static void
-spawn(const char *path, const char *cmd, const char *argv1)
+spawn(const char *path, const char *cmd, const char *argv1, int row)
 {
     int status;
     pid_t pid = fork();
@@ -275,7 +310,7 @@ spawn(const char *path, const char *cmd, const char *argv1)
         } while (!WIFEXITED(status) && !WIFSIGNALED(status));
     }
 
-    setup_terminal();
+    setup_terminal(row);
 }
 
 /**
@@ -322,7 +357,8 @@ redraw(
     const char *path,
     size_t n,
     size_t sel,
-    size_t offset)
+    size_t offset,
+    int row)
 {
     // clear screen and redraw status
     printf(
@@ -336,12 +372,12 @@ redraw(
         user_and_hostname,
         path,
         n,
-        g_row);
+        row);
 
     if (n == 0) {
         printf("\n\033[31;7mdirectory empty\033[27m");
     } else {
-        for (size_t i = offset; i < n && i - offset < (size_t)g_row - 2; ++i) {
+        for (size_t i = offset; i < n && i - offset < (size_t)row - 2; ++i) {
             printf("\n");
             draw_line(&ents[i], i == sel);
             printf("\r");
@@ -453,16 +489,33 @@ main(int argc, char **argv)
         exit(EXIT_FAILURE);
     }
 
-    if (!get_term_size()) {
+    int row = 0;
+    int col = 0;
+    if (!get_term_size(&row, &col)) {
         exit(EXIT_FAILURE);
     }
 
-    if (signal(SIGWINCH, handle_winch) == SIG_ERR) {
-        perror("signal");
+    struct sigaction sa_winch = {.sa_handler = handle_winch};
+    if (sigaction(SIGWINCH, &sa_winch, NULL) < 0) {
+        perror("sigaction WINCH");
         exit(EXIT_FAILURE);
     }
 
-    if (!setup_terminal()) {
+    struct sigaction sa_exit = {.sa_handler = handle_exit};
+    if (sigaction(SIGTERM, &sa_exit, NULL) < 0) {
+        perror("sigaction TERM");
+        exit(EXIT_FAILURE);
+    }
+    if (sigaction(SIGINT, &sa_exit, NULL) < 0) {
+        perror("sigaction INT");
+        exit(EXIT_FAILURE);
+    }
+
+    if (!get_termios()) {
+        exit(EXIT_FAILURE);
+    }
+
+    if (!setup_terminal(row)) {
         exit(EXIT_FAILURE);
     }
 
@@ -499,6 +552,11 @@ main(int argc, char **argv)
     size_t n;
 
     for (;;) {
+        if (g_quit) {
+            save_session(path, ents[sel].name);
+            exit(EXIT_SUCCESS);
+        }
+
         if (fetch_dir) {
             fetch_dir      = false;
             sel            = 0;
@@ -508,8 +566,9 @@ main(int argc, char **argv)
         }
 
         if (g_needs_redraw) {
-            g_needs_redraw     = false;
-            size_t scroll_size = g_row - 3;
+            g_needs_redraw = false;
+            get_term_size(&row, &col);
+            size_t scroll_size = row - 3;
 
             int empty_space = -(n - (sel - y + scroll_size));
             if (y > scroll_size) {
@@ -517,7 +576,7 @@ main(int argc, char **argv)
             } else if (empty_space > 0) {
                 y = n >= scroll_size ? y + empty_space + 1 : sel;
             }
-            redraw(ents, user_and_hostname, path, n, sel, sel - y);
+            redraw(ents, user_and_hostname, path, n, sel, sel - y, row);
 
             // move cursor to selection
             printf("\033[%zuH", y + 3);
@@ -548,30 +607,13 @@ main(int argc, char **argv)
             fetch_dir = true;
             break;
         case 's': {
-            FILE *f = fopen("/tmp/filet_dir", "w");
-            if (f) {
-                fprintf(f, "%s\n", path);
-                fclose(f);
-            }
-
-            f = fopen("/tmp/filet_sel", "w");
-            if (f) {
-                fprintf(f, "%s/%s\n", path, ents[sel].name);
-                fclose(f);
-            }
-            spawn(path, shell, NULL);
+            save_session(path, ents[sel].name);
+            spawn(path, shell, NULL, row);
             fetch_dir = true;
             break;
         }
         case 'q': {
-            FILE *f = fopen("/tmp/filet_dir", "w");
-            if (f) {
-                fprintf(f, "%s\n", path);
-            }
-            f = fopen("/tmp/filet_sel", "w");
-            if (f) {
-                fprintf(f, "%s/%s\n", path, ents[sel].name);
-            }
+            save_session(path, ents[sel].name);
             exit(EXIT_SUCCESS);
             break;
         }
@@ -590,7 +632,7 @@ main(int argc, char **argv)
                 draw_line(&ents[sel], true);
                 printf("\r");
 
-                if (y < (size_t)g_row - 3) {
+                if (y < (size_t)row - 3) {
                     ++y;
                 }
             }
@@ -621,7 +663,7 @@ main(int argc, char **argv)
                 fetch_dir = true;
             } else {
                 if (opener) {
-                    spawn(path, opener, ents[sel].name);
+                    spawn(path, opener, ents[sel].name, row);
                 }
                 fetch_dir = true;
             }
@@ -637,30 +679,30 @@ main(int argc, char **argv)
                 // screen needs to be redrawn
                 sel = 0;
                 y   = 0;
-                redraw(ents, user_and_hostname, path, n, sel, 0);
+                redraw(ents, user_and_hostname, path, n, sel, 0, row);
                 printf("\033[3H");
             }
             break;
         case 'G':
-            if (sel + g_row - 2 - y >= n) {
+            if (sel + row - 2 - y >= n) {
                 draw_line(&ents[sel], false);
                 printf(
-                    "\033[%luH",
-                    2 + (n < ((size_t)g_row - 3) ? n : (size_t)g_row));
+                    "\033[%luH", 2 + (n < ((size_t)row - 3) ? n : (size_t)row));
                 sel = n - 1;
-                y   = g_row - 3;
+                y   = row - 3;
                 draw_line(&ents[sel], true);
                 printf("\r");
             } else {
                 // screen needs to be redrawn
                 sel = n - 1;
-                y   = g_row - 3;
-                redraw(ents, user_and_hostname, path, n, sel, n - (g_row - 2));
-                printf("\033[%dH", g_row);
+                y   = row - 3;
+                redraw(
+                    ents, user_and_hostname, path, n, sel, n - (row - 2), row);
+                printf("\033[%dH", row);
             }
             break;
         case 'e':
-            spawn(path, editor, ents[sel].name);
+            spawn(path, editor, ents[sel].name, row);
             fetch_dir = true;
             break;
         case 'm':
