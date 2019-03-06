@@ -393,7 +393,7 @@ redraw(
 static int
 getkey(void)
 {
-    char c[3]    = {0};
+    char c[3];
     int num_read = read(STDIN_FILENO, c, sizeof(c));
     if (num_read <= 0) {
         return -1;
@@ -408,7 +408,7 @@ getkey(void)
     }
 
     if (c[1] != '[') {
-        return c[0];
+        return c[1];
     }
 
     switch (c[2]) {
